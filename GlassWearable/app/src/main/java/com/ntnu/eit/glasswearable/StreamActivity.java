@@ -8,10 +8,22 @@ import com.google.android.glass.widget.CardScrollView;
 import android.app.Activity;
 import android.content.Context;
 import android.media.AudioManager;
+import android.media.MediaPlayer;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.ParcelFileDescriptor;
+import android.util.Log;
+import android.view.SurfaceHolder;
+import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.Window;
 import android.widget.AdapterView;
+import android.widget.TextView;
+
+import java.io.IOException;
+import java.net.Socket;
+import java.net.UnknownHostException;
 
 /**
  * An {@link Activity} showing a tuggable "Hello World!" card.
@@ -28,7 +40,9 @@ import android.widget.AdapterView;
  * - Play video https://developers.google.com/glass/develop/mirror/static-cards#attaching_video
  * http://stackoverflow.com/questions/16049889/google-mirror-api-video
  */
-public class StreamActivity extends Activity {
+public class StreamActivity extends Activity implements SurfaceHolder.Callback{
+
+    private static final String TAG = StreamActivity.class.getSimpleName();
 
     /**
      * {@link CardScrollView} to use as the main content view.
@@ -40,6 +54,31 @@ public class StreamActivity extends Activity {
      */
     private View mView;
 
+    MediaPlayer mp;
+    private SurfaceView mPreview;
+    private SurfaceHolder holder;
+    private TextView mTextview;
+    public static final int SERVERPORT = 6775;
+    public static String SERVERIP="192.168.1.126";
+    Socket clientSocket;
+    private Handler handler = new Handler();
+
+    /*
+    Hvis MJPEG stream http://stackoverflow.com/questions/6116880/stream-live-video-from-phone-to-phone-using-socket-fd
+    @Override
+public void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    setContentView(R.layout.mjpeg_activity);
+    // Grab instance of WebView
+    WebView webView = (WebView)findViewById(R.id.webViewStream);
+    // Set page content for webview
+    webView.loadData("<html><head><meta name='viewport' content='target-densitydpi=device-dpi,initial-scale=1,minimum-scale=1,user-scalable=yes'/></head><body><center><img src=\"http://192.168.0.101:8080/\" alt=\"Stream\" align=\"middle\"></center></body></html>", "text/html", null);
+    webView.getSettings().setBuiltInZoomControls(true);
+
+    Med dette istedenfor?
+    http://stackoverflow.com/questions/14815103/android-streaming-the-camera-as-mjpeg
+}
+     */
     @Override
     protected void onCreate(Bundle bundle) {
         super.onCreate(bundle);
@@ -81,6 +120,56 @@ public class StreamActivity extends Activity {
             }
         });
         setContentView(mCardScroller);
+
+
+        //mPreview = (SurfaceView) findViewById(R.id.surfaceView1);
+        //mTextview = (TextView) findViewById(R.id.textView1);
+        holder = mPreview.getHolder();
+        holder.addCallback(this);
+        holder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+        Log.v(TAG, "Attempting to connect");
+        //mTextview.setText("Attempting to connect");
+        mp = new MediaPlayer();
+        Thread t = new Thread(){
+            public void run(){
+                try {
+                    clientSocket = new Socket(SERVERIP, SERVERPORT);
+                    handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            Log.v(TAG,"Connected to server" );
+                            //mTextview.setText("Connected to server");
+                        }
+                    });
+                    handler.post(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                ParcelFileDescriptor pfd = ParcelFileDescriptor.fromSocket(clientSocket);
+                                pfd.getFileDescriptor().sync();
+                                mp.setDataSource(pfd.getFileDescriptor());
+                                pfd.close();
+                                mp.setDisplay(holder);
+                                mp.prepareAsync();
+                                mp.start();
+                            } catch (IOException e) {
+                                // TODO Auto-generated catch block
+                                e.printStackTrace();
+                            }
+
+                        }
+                    });
+
+                } catch (UnknownHostException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                } catch (IOException e) {
+                    // TODO Auto-generated catch block
+                    e.printStackTrace();
+                }
+            }
+        };
+        t.start();
     }
 
     @Override
@@ -105,4 +194,18 @@ public class StreamActivity extends Activity {
         return card.getView();
     }
 
+    @Override
+    public void surfaceCreated(SurfaceHolder surfaceHolder) {
+
+    }
+
+    @Override
+    public void surfaceChanged(SurfaceHolder surfaceHolder, int i, int i2, int i3) {
+
+    }
+
+    @Override
+    public void surfaceDestroyed(SurfaceHolder surfaceHolder) {
+
+    }
 }
